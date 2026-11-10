@@ -1,0 +1,225 @@
+<!-- ===== responsive-fix: ajustes para celular/tablet =====
+     Lo inyecta automáticamente ~/bin/publicar-dashboard.sh antes de </body> en index.html.
+     No editar index.html a mano: este bloque se vuelve a aplicar en cada publicación. -->
+<style id="rf-style">
+@media (max-width:1100px){.rf-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}}
+@media (max-width:640px){
+  .rf-xscroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .rf-xscroll>*{min-width:620px}
+}
+@media (max-width:640px){
+  .dash-section img,.dash-section svg{max-width:100%;height:auto}
+  .masthead{flex-direction:column;align-items:flex-start;gap:10px}
+  .masthead h1{font-size:22px;line-height:1.2}
+  .masthead .org{text-align:left}
+  .card h2{flex-direction:column;align-items:flex-start;gap:3px}
+  .section-divider{flex-wrap:wrap;gap:6px 12px}
+  .section-divider h2{white-space:normal;font-size:17px}
+  .kb-metrics,.kb-canales{flex-wrap:wrap;gap:14px 18px}
+  .kb-metrics>*,.kb-canales>*{flex:1 1 40%!important;min-width:0}
+  .kbv{font-size:20px!important}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .fn-duo{display:flex!important;flex-direction:column;gap:22px}
+}
+</style>
+<script id="rf-script">
+(function(){
+  var MOBILE=640;
+  function isMobile(){return window.innerWidth<=MOBILE;}
+
+  /* ---------- 1. Tablas: scroll horizontal propio en vez de desbordar la página ---------- */
+  function hasScrollAncestor(el){
+    for(var a=el.parentElement;a&&a!==document.body;a=a.parentElement){
+      var o=getComputedStyle(a).overflowX; if(o==='auto'||o==='scroll') return true;
+    }
+    return false;
+  }
+  function wrapTables(root){
+    (root||document).querySelectorAll('.dash-section table').forEach(function(t){
+      if(t.parentElement.classList.contains('rf-scroll')||hasScrollAncestor(t)) return;
+      var w=document.createElement('div'); w.className='rf-scroll';
+      t.parentNode.insertBefore(w,t); w.appendChild(t);
+    });
+  }
+
+  /* ---------- 2. Contenedores que se salen del ancho (solo celular) ---------- */
+  function cols(el){var g=getComputedStyle(el).gridTemplateColumns;return g&&g!=='none'?g.trim().split(/\s+/).length:1;}
+  function overflows(el){return el.scrollWidth>el.clientWidth+2;}
+  function fixOverflow(sec){
+    if(!sec||!isMobile()) return;
+    for(var pass=0;pass<3;pass++){
+      var changed=false;
+      sec.querySelectorAll('*').forEach(function(el){
+        var cs, p=el.parentElement;
+        // Hijo más ancho que su contenedor por un min-width fijo o por ser una fila inline
+        if(p&&el.offsetWidth>p.clientWidth+2&&!el.closest('.rf-scroll,table')){
+          cs=getComputedStyle(el);
+          if(parseFloat(cs.minWidth)>0){el.style.minWidth='0';changed=true;}
+          else if(el.childElementCount>1&&cs.display.indexOf('grid')<0&&cs.display.indexOf('table')<0&&Array.prototype.every.call(el.children,function(c){return getComputedStyle(c).display.indexOf('inline')===0;})){
+            el.style.minWidth='0';el.style.maxWidth='100%';el.style.display='flex';el.style.flexWrap='wrap';el.style.gap='4px';changed=true;}
+        }
+        if(!el.clientWidth||!overflows(el)) return;
+        cs=getComputedStyle(el);
+        if(cs.overflowX==='auto'||cs.overflowX==='scroll'||el.tagName==='CANVAS'||el.closest('.rf-scroll,table')) return;
+        if(cs.display.indexOf('grid')>=0){
+          var n=cols(el);
+          if(n>=6){ // calendario / grilla tipo tabla: scroll horizontal, no colapsar
+            if(!el.parentElement.classList.contains('rf-scroll')){var w=document.createElement('div');w.className='rf-scroll';el.parentNode.insertBefore(w,el);w.appendChild(el);el.style.minWidth='640px';changed=true;}
+            return;
+          }
+          if(!el.dataset.rfGrid){el.dataset.rfGrid=1;el.style.gridTemplateColumns='repeat('+Math.min(n,2)+',minmax(0,1fr))';changed=true;}
+          else if(el.dataset.rfGrid==='1'&&n>1){el.dataset.rfGrid=2;el.style.gridTemplateColumns='minmax(0,1fr)';changed=true;}
+        }else if(cs.display.indexOf('flex')>=0&&cs.flexWrap==='nowrap'&&cs.flexDirection.indexOf('row')===0){
+          // ¿Fila de una "tabla" hecha con flex? (varias filas hermanas iguales con 5+ celdas) → scroll, no quiebre
+          var par=el.parentElement, same=par?Array.prototype.filter.call(par.children,function(c){return c.className===el.className;}).length:0;
+          // solo si tiene fila de encabezado (misma cantidad de celdas y sin números)
+          var hdr=par&&Array.prototype.some.call(par.children,function(r){return r.childElementCount===el.childElementCount&&!/\d/.test(r.textContent);});
+          if(el.childElementCount>=5&&same>=3&&el.className&&hdr){
+            if(!par.classList.contains('rf-xscroll')){par.classList.add('rf-xscroll');changed=true;}
+          }else{ el.style.flexWrap='wrap'; changed=true; }
+        }else if(el.childElementCount===0&&el.textContent.trim()){
+          // antes de achicar letra: si está dentro de una grilla de 3+ columnas, pasarla a 2
+          var big=el.scrollWidth>el.clientWidth*1.3;
+          for(var a=el.parentElement,k=0;a&&a!==sec&&k<5;a=a.parentElement,k++){
+            var acs=getComputedStyle(a),ac=cols(a);
+            if(big&&acs.display.indexOf('flex')>=0&&acs.flexDirection.indexOf('row')===0&&a.childElementCount>=2&&!a.dataset.rfCol&&
+               Array.prototype.every.call(a.children,function(c){return c.offsetWidth<a.clientWidth*0.75;})){
+              a.dataset.rfCol=1;a.style.flexDirection='column';a.style.flexWrap='nowrap';changed=true;return;
+            }
+            if(acs.display.indexOf('grid')<0||ac>=6) continue;
+            if(ac>2&&!a.dataset.rfGrid){a.dataset.rfGrid=1;a.style.gridTemplateColumns='repeat(2,minmax(0,1fr))';changed=true;return;}
+            if(ac===2&&big&&a.dataset.rfGrid!=='2'){a.dataset.rfGrid=2;a.style.gridTemplateColumns='minmax(0,1fr)';changed=true;return;}
+          }
+          var fs=parseFloat(cs.fontSize),min=fs*0.6;
+          while(overflows(el)&&fs>min){fs*=0.92;el.style.fontSize=fs+'px';}
+          changed=true;
+        }
+      });
+      if(!changed) break;
+    }
+    // Grillas de 2+ columnas que contienen tablas o gráficos: una columna en celular
+    sec.querySelectorAll('*').forEach(function(g){
+      var gcs=getComputedStyle(g);
+      if(gcs.display.indexOf('flex')>=0&&gcs.flexDirection.indexOf('row')===0&&g.childElementCount>=2&&!g.dataset.rfCol){
+        var ks=Array.prototype.filter.call(g.children,function(c){return c.offsetWidth>0;});
+        var heavyF=ks.some(function(c){return c.offsetWidth<260&&c.querySelector&&c.querySelector('table,canvas');});
+        var tops=ks.map(function(c){return c.offsetTop;}), sameRow=tops.length>1&&tops.every(function(t){return t===tops[0];});
+        if(heavyF&&sameRow){g.dataset.rfCol=1;g.style.flexDirection='column';g.style.flexWrap='nowrap';}
+        return;
+      }
+      if(gcs.display.indexOf('grid')<0) return;
+      var n=cols(g); if(n<2||n>=6||g.dataset.rfGrid==='2') return;
+      var heavy=Array.prototype.some.call(g.children,function(c){return c.querySelector&&c.querySelector('table,canvas,.rf-xscroll');});
+      if(heavy&&g.clientWidth/n<260){g.dataset.rfGrid=2;g.style.gridTemplateColumns='minmax(0,1fr)';}
+    });
+    // Tablas con filas altísimas (columna estrecha que parte el texto): darles ancho y scroll
+    sec.querySelectorAll('.rf-scroll>table').forEach(function(tb){
+      var rows=tb.rows.length; if(!rows||tb.dataset.rfWide) return;
+      if(tb.offsetHeight/rows>64){tb.dataset.rfWide=1;tb.style.minWidth='600px';}
+    });
+  }
+  function activeSection(){return document.querySelector('.dash-section.active');}
+  var t=null;
+  function schedule(){clearTimeout(t);t=setTimeout(function(){wrapTables();fixOverflow(activeSection());},120);}
+
+  /* ---------- 3. Gráficos Chart.js en pantallas angostas ---------- */
+  function setupCharts(){
+    if(typeof Chart==='undefined'||Chart.__rf) return; Chart.__rf=true;
+    // Solo en pantallas de celular: en escritorio/tablet los gráficos quedan tal cual
+    function narrow(){return isMobile();}
+    function hasHtmlLegend(chart){var c=chart.canvas.closest('.card,.ppart-col');return !!(c&&c.querySelector('[class*="legend"],[id*="Legend"],[id*="leyenda"],[class*="leyenda"]'));}
+    function pctLabels(chart){
+      var ds=chart.data.datasets[0]||{data:[]},tot=ds.data.reduce(function(a,b){return a+(+b||0);},0);
+      return chart.data.labels.map(function(l,i){var v=+ds.data[i]||0;
+        return {text:l+'  '+(tot?(v/tot*100).toFixed(1).replace('.',','):'0')+'%',fillStyle:Array.isArray(ds.backgroundColor)?ds.backgroundColor[i]:ds.backgroundColor,strokeStyle:'#fff',lineWidth:1,index:i,hidden:!chart.getDataVisibility(i)};});
+    }
+    // Las etiquetas con "palitos" de las tortas se cortan en celular: se apagan y se usa leyenda.
+    function guardCallouts(chart){
+      (chart.config.plugins||[]).forEach(function(p){
+        if(p.__rfWrapped) return; p.__rfWrapped=true;
+        ['afterDraw','afterDatasetsDraw','afterDatasetDraw','beforeDraw'].forEach(function(h){
+          if(typeof p[h]!=='function') return; var f=p[h];
+          p[h]=function(c){ if(c.__rfNoCallout&&h!=='beforeDraw') return; return f.apply(this,arguments); };
+        });
+      });
+    }
+    function apply(chart){
+      var o=chart.config.options||(chart.config.options={}), n=narrow(chart);
+      o.plugins=o.plugins||{};
+      if(!chart.__rfOrig){chart.__rfOrig={l:o.layout,pl:o.plugins.legend};}
+      var orig=chart.__rfOrig;
+      var type=chart.config.type;
+      if(type==='doughnut'||type==='pie'){
+        var callouts=(chart.config.plugins||[]).length>0;
+        if(!callouts) return;
+        guardCallouts(chart);
+        if(!n&&!chart.__rfNoCallout) return; // escritorio y nunca se tocó: no cambiar nada
+        chart.__rfNoCallout=n;
+        if(n){
+          o.layout={padding:6};
+          if(!(orig.pl&&orig.pl.display!==false)||!orig.pl){
+            if(!hasHtmlLegend(chart)) o.plugins.legend={display:true,position:'bottom',labels:{boxWidth:10,font:{size:11},padding:8,generateLabels:pctLabels}};
+          }
+        }else{
+          if(orig.l===undefined) delete o.layout; else o.layout=orig.l;
+          if(orig.pl===undefined) delete o.plugins.legend; else o.plugins.legend=orig.pl;
+        }
+        return;
+      }
+      if(!n) return; // en escritorio no se toca nada más
+      // Ejes: letra más chica, menos marcas y rotación acotada
+      var sc=o.scales||{};
+      var valueAxes=Object.keys(sc).filter(function(k){var s=sc[k]||{};return s.display!==false&&(o.indexAxis==='y'?k.charAt(0)==='x':k.charAt(0)==='y');}).length;
+      Object.keys(sc).forEach(function(k){
+        var s=sc[k]||{}; s.ticks=s.ticks||{};
+        s.ticks.font=Object.assign({},s.ticks.font,{size:Math.min((s.ticks.font&&s.ticks.font.size)||10,10)});
+        var isIndex=(o.indexAxis==='y')?k.charAt(0)==='y':k.charAt(0)==='x';
+        if(isIndex){
+          if(s.ticks.autoSkip===undefined) s.ticks.autoSkip=true;
+          if(o.indexAxis!=='y'){s.ticks.maxRotation=Math.min(s.ticks.maxRotation==null?50:s.ticks.maxRotation,50);if(!s.ticks.maxTicksLimit)s.ticks.maxTicksLimit=8;}
+          else if(!(s.ticks.callback&&s.ticks.callback.__rf)){
+            var cb0=s.ticks.callback;
+            s.ticks.callback=function(v,i,ts){var l=cb0?cb0.call(this,v,i,ts):this.getLabelForValue(v);return (typeof l==='string'&&l.length>18)?l.slice(0,17)+'…':l;};
+            s.ticks.callback.__rf=true;
+          }
+        }else if(!s.ticks.maxTicksLimit){s.ticks.maxTicksLimit=6;}
+        if(s.title&&s.title.display){
+          // con dos ejes de valores los títulos verticales se comen el gráfico: se ocultan (la leyenda ya lo dice)
+          if(valueAxes>1&&!isIndex) s.title.display=false; else s.title.font=Object.assign({},s.title.font,{size:10});
+        }
+      });
+      // Leyenda compacta
+      if(o.plugins.legend&&o.plugins.legend.display!==false){
+        var lb=o.plugins.legend.labels=o.plugins.legend.labels||{};
+        lb.boxWidth=Math.min(lb.boxWidth||10,10); lb.padding=Math.min(lb.padding==null?8:lb.padding,8);
+        lb.font=Object.assign({},lb.font,{size:Math.min((lb.font&&lb.font.size)||11,11)});
+      }
+      // Etiquetas de datos: ocultar las que se tapan entre sí
+      function autoDL(dl){
+        if(!dl||dl.display===false||dl.__rf) return;
+        dl.__rf=true; var d0=dl.display;
+        dl.display=function(ctx){var r=(typeof d0==='function')?d0(ctx):(d0===undefined?true:d0);return r?'auto':false;};
+        if(dl.font&&typeof dl.font==='object'&&dl.font.size>10) dl.font=Object.assign({},dl.font,{size:10});
+      }
+      autoDL(o.plugins.datalabels);
+      ((chart.config.data&&chart.config.data.datasets)||[]).forEach(function(ds){autoDL(ds.datalabels);});
+    }
+    Chart.register({id:'rfResponsive',
+      beforeInit:function(chart){try{apply(chart);}catch(e){}},
+      resize:function(chart){try{apply(chart);}catch(e){}}
+    });
+    // Gráficos ya creados antes de este script
+    Object.values(Chart.instances||{}).forEach(function(c){try{apply(c);c.update('none');}catch(e){}});
+  }
+
+  function init(){
+    setupCharts(); wrapTables(); fixOverflow(activeSection());
+    var host=document.getElementById('sectionHost')||document.body;
+    new MutationObserver(schedule).observe(host,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+    var lastW=window.innerWidth;
+    window.addEventListener('resize',function(){if(window.innerWidth!==lastW){lastW=window.innerWidth;schedule();}});
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
+})();
+</script>
+<!-- ===== /responsive-fix ===== -->
