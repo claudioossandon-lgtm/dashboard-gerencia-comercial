@@ -1,2 +1,5 @@
 .vercel
 .DS_Store
+# Contexto y bitácora de Claude: repo git local aparte (no se publica)
+.claude/
+CLAUDE.md
